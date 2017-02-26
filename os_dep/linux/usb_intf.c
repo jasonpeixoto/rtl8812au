@@ -1958,6 +1958,112 @@ _func_exit_;
 extern int console_suspend_enabled;
 #endif
 
+
+#ifdef CONFIG_PLATFORM_ARM_SUNxI
+#ifndef CONFIG_RTL8723A
+int script_parser_fetch(char *main_name, char *sub_name, int value[], int count)
+{
+    char   main_bkname[32], sub_bkname[32];
+    char   *main_char, *sub_char;
+    script_main_key_t  *main_key = NULL;
+    script_sub_key_t   *sub_key = NULL;
+    int    i, j;
+    int    pattern, word_count;
+
+    pr_debug("enter script parse fetch. \n");
+
+    /* check params */
+    if(!script_mod_buf)
+    {
+        return SCRIPT_PARSER_EMPTY_BUFFER;
+    }
+
+    if((main_name == NULL) || (sub_name == NULL))
+    {
+        return SCRIPT_PARSER_KEYNAME_NULL;
+    }
+
+    if(value == NULL)
+    {
+        return SCRIPT_PARSER_DATA_VALUE_NULL;
+    }
+
+    /* truncate string if size >31 bytes */
+    main_char = main_name;
+    if(_test_str_length(main_name) > 31)   
+    {
+        memset(main_bkname, 0, 32);
+        strncpy(main_bkname, main_name, 31);
+        main_char = main_bkname;
+    }
+    sub_char = sub_name;
+    if(_test_str_length(sub_name) > 31)
+    {
+        memset(sub_bkname, 0, 32);
+        strncpy(sub_bkname, sub_name, 31);
+        sub_char = sub_bkname;
+    }
+    pr_debug("gpio: main name is : %s, sub_name is: %s", main_char, sub_char);
+
+    for(i=0;i<script_main_key_count;i++)
+    {
+        main_key = (script_main_key_t *)(script_mod_buf + (sizeof(script_head_t)) + i * sizeof(script_main_key_t));
+        if(strcmp(main_key->main_name, main_char))
+        {
+            continue;//如果不是你要初始化的参数跳出去
+
+        }
+        
+        /* now find sub key */
+        for(j=0;j<main_key->lenth;j++)
+        {
+            sub_key = (script_sub_key_t *)(script_mod_buf + (main_key->offset<<2) + (j * sizeof(script_sub_key_t)));
+            if(strcmp(sub_key->sub_name, sub_char))
+            {
+                continue;  //如果不是你要初始化的参数跳出去
+            }
+            pattern    = (sub_key->pattern>>16) & 0xffff; /* get datatype */
+            word_count = (sub_key->pattern>> 0) & 0xffff; /*get count of word */
+            pr_debug("pattern is: 0x%x, word_count is: 0x%x, ", pattern, word_count);
+
+            switch(pattern)
+            {
+                case SCIRPT_PARSER_VALUE_TYPE_SINGLE_WORD:
+                    value[0] = *(int *)(script_mod_buf + (sub_key->offset<<2));
+                    break;
+
+                case SCIRPT_PARSER_VALUE_TYPE_STRING:
+                    if(count < word_count)
+                    {
+                        word_count = count;
+                    }
+                    memcpy((char *)value, script_mod_buf + (sub_key->offset<<2), word_count << 2);
+                    break;
+
+                case SCIRPT_PARSER_VALUE_TYPE_MULTI_WORD:
+                    break;
+                case SCIRPT_PARSER_VALUE_TYPE_GPIO_WORD:
+                {
+                    script_gpio_set_t  *user_gpio_cfg = (script_gpio_set_t *)value;
+                    /* buffer space enough? */
+                    if(sizeof(script_gpio_set_t) > (count<<2))
+                    {
+                        return SCRIPT_PARSER_BUFFER_NOT_ENOUGH;
+                    }
+                    strcpy( user_gpio_cfg->gpio_name, sub_char);
+                    memcpy(&user_gpio_cfg->port, script_mod_buf + (sub_key->offset<<2),  sizeof(script_gpio_set_t) - 32);
+                    break;
+                }
+            }
+
+            return SCRIPT_PARSER_OK;
+        }
+    }
+    return SCRIPT_PARSER_KEY_NOT_FIND;
+}
+#endif //CONFIG_RTL8723A
+#endif //CONFIG_PLATFORM_ARM_SUNxI
+
 static int __init rtw_drv_entry(void)
 {
 #ifdef CONFIG_PLATFORM_RTK_DMP
